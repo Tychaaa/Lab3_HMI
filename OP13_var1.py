@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from PySide6.QtCore import Qt, QDate, QLocale, Signal
-from PySide6.QtGui import QAction, QIntValidator
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -92,16 +92,18 @@ class OP13BlankWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ОП-13 - Акт расхода специй и соли (вариант 1)")
-        self.resize(1100, 800)
+        self.resize(850, 950)
+        self.setMinimumSize(850, 950)
 
         self._did_first_table_resize = False
 
-        self._build_actions()
-        self._build_menu()
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+        #scroll.setStyleSheet("QScrollArea { background-color: white; border: none; }")
+        #scroll.viewport().setStyleSheet("background-color: white;")
         root = QWidget()
+        root.setMaximumWidth(820)
         scroll.setWidget(root)
         self.setCentralWidget(scroll)
 
@@ -139,36 +141,36 @@ class OP13BlankWindow(QMainWindow):
         layout = QVBoxLayout(box)
         layout.setSpacing(10)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8)
+        row = QHBoxLayout()
+        row.setSpacing(10)
 
         self.ed_doc_no = QLineEdit()
         self.ed_doc_no.setObjectName("doc_no")
-        self.ed_doc_no.setPlaceholderText("Номер документа")
+        self.ed_doc_no.setMaximumWidth(100)
+        self.ed_doc_no.setPlaceholderText("Номер")
 
         self.ed_doc_date = self._make_date_edit("dd.MM.yyyy")
         self.ed_doc_date.setObjectName("doc_date")
+        self.ed_doc_date.setMaximumWidth(120)
 
         self.ed_period_from = self._make_date_edit("dd.MM.yyyy")
         self.ed_period_from.setObjectName("period_from")
+        self.ed_period_from.setMaximumWidth(120)
 
         self.ed_period_to = self._make_date_edit("dd.MM.yyyy")
         self.ed_period_to.setObjectName("period_to")
+        self.ed_period_to.setMaximumWidth(120)
 
-        grid.addWidget(QLabel("Номер документа:"), 0, 0)
-        grid.addWidget(self.ed_doc_no, 0, 1)
-        grid.addWidget(QLabel("Дата составления:"), 0, 2)
-        grid.addWidget(self.ed_doc_date, 0, 3)
-
-        grid.addWidget(QLabel("Отчетный период: с"), 1, 0)
-        grid.addWidget(self.ed_period_from, 1, 1)
-        grid.addWidget(QLabel("по"), 1, 2, alignment=Qt.AlignmentFlag.AlignRight)
-        grid.addWidget(self.ed_period_to, 1, 3)
-
-        grid.setColumnStretch(1, 2)
-        grid.setColumnStretch(3, 2)
-        layout.addLayout(grid)
+        row.addWidget(QLabel("Номер документа"))
+        row.addWidget(self.ed_doc_no)
+        row.addWidget(QLabel("Дата составления"))
+        row.addWidget(self.ed_doc_date)
+        row.addWidget(QLabel("Отчетный период с"))
+        row.addWidget(self.ed_period_from)
+        row.addWidget(QLabel("по"))
+        row.addWidget(self.ed_period_to)
+        row.addStretch(1)
+        layout.addLayout(row)
 
         return box
 
@@ -187,11 +189,6 @@ class OP13BlankWindow(QMainWindow):
         self.ed_dept.setPlaceholderText("Структурное подразделение")
         self.ed_dept.setMinimumWidth(220)
 
-        self.ed_okud = QLineEdit("0330513")
-        self.ed_okud.setObjectName("okud")
-        self.ed_okud.setReadOnly(True)
-        self.ed_okud.setMaximumWidth(140)
-
         self.ed_okpo = QLineEdit()
         self.ed_okpo.setObjectName("okpo")
         self.ed_okpo.setValidator(QIntValidator(0, 999999999))
@@ -200,11 +197,11 @@ class OP13BlankWindow(QMainWindow):
 
         self.ed_okdp = QLineEdit()
         self.ed_okdp.setObjectName("okdp")
-        self.ed_okdp.setPlaceholderText("Вид деятельности по ОКДП")
+        self.ed_okdp.setPlaceholderText("ОКДП")
 
         self.ed_operation = QLineEdit()
         self.ed_operation.setObjectName("operation_kind")
-        self.ed_operation.setPlaceholderText("Вид операции")
+        self.ed_operation.setPlaceholderText("Вид")
 
         approve_box = QGroupBox("УТВЕРЖДАЮ")
         approve_grid = QGridLayout(approve_box)
@@ -222,25 +219,17 @@ class OP13BlankWindow(QMainWindow):
         self.cb_head_name.setEditable(True)
         self.cb_head_name.addItem("")
         self.cb_head_name.addItems(NAMES_APPROVE)
-        self.cb_head_name.currentTextChanged.connect(self._on_head_name_changed)
-
-        self.ed_head_signature = QLineEdit()
-        self.ed_head_signature.setObjectName("head_signature")
-        self.ed_head_signature.setPlaceholderText("Подпись")
-        self.ed_head_signature.setReadOnly(True)
 
         self.ed_act_date = self._make_date_edit("«dd» MMMM yyyy 'г.'")
         self.ed_act_date.setObjectName("approval_date")
 
         approve_grid.addWidget(QLabel("Должность:"), 0, 0)
         approve_grid.addWidget(self.cb_head_position, 0, 1)
-        approve_grid.addWidget(QLabel("Подпись:"), 1, 0)
-        approve_grid.addWidget(self.ed_head_signature, 1, 1)
-        approve_grid.addWidget(QLabel("Расшифровка:"), 2, 0)
-        approve_grid.addWidget(self.cb_head_name, 2, 1)
-        approve_grid.addWidget(QLabel("Дата утверждения:"), 3, 0)
-        approve_grid.addWidget(self.ed_act_date, 3, 1)
-        approve_box.setMinimumWidth(450)
+        approve_grid.addWidget(QLabel("Расшифровка:"), 1, 0)
+        approve_grid.addWidget(self.cb_head_name, 1, 1)
+        approve_grid.addWidget(QLabel("Дата утверждения:"), 2, 0)
+        approve_grid.addWidget(self.ed_act_date, 2, 1)
+        approve_grid.setColumnStretch(1, 1)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
@@ -249,19 +238,18 @@ class OP13BlankWindow(QMainWindow):
         left_grid.setHorizontalSpacing(6)
         left_grid.setVerticalSpacing(6)
         left_grid.addWidget(QLabel("Организация:"), 0, 0)
-        left_grid.addWidget(self.ed_org, 0, 1, 1, 3)
+        left_grid.addWidget(self.ed_org, 0, 1, 1, 5)
         left_grid.addWidget(QLabel("Подразделение:"), 1, 0)
-        left_grid.addWidget(self.ed_dept, 1, 1, 1, 3)
-        left_grid.addWidget(QLabel("ОКУД:"), 2, 0)
-        left_grid.addWidget(self.ed_okud, 2, 1)
-        left_grid.addWidget(QLabel("ОКДП:"), 2, 2)
-        left_grid.addWidget(self.ed_okdp, 2, 3)
-        left_grid.addWidget(QLabel("ОКПО:"), 3, 0)
-        left_grid.addWidget(self.ed_okpo, 3, 1)
-        left_grid.addWidget(QLabel("Вид операции:"), 3, 2)
-        left_grid.addWidget(self.ed_operation, 3, 3)
-        left_grid.setColumnStretch(1, 0)
-        left_grid.setColumnStretch(3, 1)
+        left_grid.addWidget(self.ed_dept, 1, 1, 1, 5)
+        left_grid.addWidget(QLabel("ОКДП:"), 2, 0)
+        left_grid.addWidget(self.ed_okdp, 2, 1)
+        left_grid.addWidget(QLabel("ОКПО:"), 2, 2)
+        left_grid.addWidget(self.ed_okpo, 2, 3)
+        left_grid.addWidget(QLabel("Вид операции:"), 2, 4)
+        left_grid.addWidget(self.ed_operation, 2, 5)
+        left_grid.setColumnStretch(1, 1)
+        left_grid.setColumnStretch(3, 0)
+        left_grid.setColumnStretch(5, 1)
 
         top_row.addLayout(left_grid, 1)
         top_row.addWidget(approve_box, 0)
@@ -462,15 +450,20 @@ class OP13BlankWindow(QMainWindow):
         grid.addWidget(self.sp_salt_per_dish, 2, 2)
         grid.addWidget(self.sp_salt_sum, 2, 3)
 
-        grid.addWidget(mk_label("Итого", bold=True), 3, 0)
-        grid.addWidget(QLabel(""), 3, 1)
-        grid.addWidget(QLabel(""), 3, 2)
+        grid.addWidget(mk_label("Итого", bold=True), 3, 0, 1, 3, alignment=Qt.AlignmentFlag.AlignRight)
         grid.addWidget(self.sp_ref_total, 3, 3)
 
-        grid.addWidget(mk_label("Израсходовано согласно контрольного расчета:"), 4, 0, 1, 3)
+        grid.addWidget(
+            mk_label("Израсходовано согласно<br>контрольному расчету:"),
+            4,
+            0,
+            1,
+            3,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
         grid.addWidget(self.sp_control_consumed, 4, 3)
 
-        grid.addWidget(mk_label("Сумма недорасхода:"), 5, 0, 1, 3)
+        grid.addWidget(mk_label("Сумма недорасхода:"), 5, 0, 1, 3, alignment=Qt.AlignmentFlag.AlignRight)
         grid.addWidget(self.sp_underspend, 5, 3)
 
         self.sb_spice_dishes.valueChanged.connect(self._recalc_reference)
@@ -519,13 +512,17 @@ class OP13BlankWindow(QMainWindow):
         self.cb_accountant_name.addItems(NAMES_ACCOUNTANT)
         self.cb_accountant_name.currentTextChanged.connect(self._on_accountant_name_changed)
 
+        self.ed_accountant_position = QLineEdit("Бухгалтер")
+        self.ed_accountant_position.setObjectName("accountant_position")
+        self.ed_accountant_position.setReadOnly(True)
+
         grid.addWidget(QLabel("Расчет и справку составил:"), 0, 0)
         grid.addWidget(self.cb_compiler_position, 0, 1)
         grid.addWidget(self.ed_compiler_signature, 0, 2)
         grid.addWidget(self.cb_compiler_name, 0, 3)
 
-        grid.addWidget(QLabel("Бухгалтер:"), 1, 0)
-        grid.addWidget(QLabel(""), 1, 1)
+        grid.addWidget(QLabel(""), 1, 0)
+        grid.addWidget(self.ed_accountant_position, 1, 1)
         grid.addWidget(self.ed_accountant_signature, 1, 2)
         grid.addWidget(self.cb_accountant_name, 1, 3)
 
@@ -562,27 +559,6 @@ class OP13BlankWindow(QMainWindow):
         row.addWidget(self.btn_export_xls)
 
         return box
-
-    def _build_actions(self) -> None:
-        self.act_clear = QAction("Очистить", self)
-        self.act_clear.setShortcut("Ctrl+N")
-        self.act_clear.triggered.connect(self.clear_form)
-
-        self.act_exit = QAction("Выход", self)
-        self.act_exit.setShortcut("Ctrl+Q")
-        self.act_exit.triggered.connect(self.close)
-
-        self.act_about = QAction("О программе", self)
-        self.act_about.triggered.connect(self._about)
-
-    def _build_menu(self) -> None:
-        m_file = self.menuBar().addMenu("Файл")
-        m_file.addAction(self.act_clear)
-        m_file.addSeparator()
-        m_file.addAction(self.act_exit)
-
-        m_help = self.menuBar().addMenu("Справка")
-        m_help.addAction(self.act_about)
 
     def _apply_ru_locale(self) -> None:
         ru = QLocale(QLocale.Language.Russian, QLocale.Country.Russia)
@@ -646,9 +622,6 @@ class OP13BlankWindow(QMainWindow):
         self.sp_ref_total.blockSignals(False)
         self.sp_underspend.blockSignals(False)
 
-    def _on_head_name_changed(self, full_name: str) -> None:
-        self.ed_head_signature.setText(full_name_to_signature(full_name))
-
     def _on_compiler_name_changed(self, full_name: str) -> None:
         self.ed_compiler_signature.setText(full_name_to_signature(full_name))
 
@@ -663,7 +636,6 @@ class OP13BlankWindow(QMainWindow):
             self.ed_dept,
             self.ed_okdp,
             self.ed_operation,
-            self.ed_head_signature,
             self.ed_compiler_signature,
             self.ed_accountant_signature,
         ):
@@ -704,16 +676,6 @@ class OP13BlankWindow(QMainWindow):
         self.sp_salt_per_dish.setValue(0.0)
         self.sp_control_consumed.setValue(0.0)
         self._recalc_reference()
-
-    def _about(self) -> None:
-        QMessageBox.information(
-            self,
-            "О программе",
-            "Интерфейс для заполнения унифицированной формы № ОП-13 "
-            "«Акт расхода специй и соли».\n"
-            "Реализация: PySide6 / Qt.",
-        )
-
 
 def main() -> int:
     app = QApplication(sys.argv)
