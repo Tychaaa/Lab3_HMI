@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
+import openpyxl
 from PySide6.QtCore import Qt, QDate, QLocale, QPersistentModelIndex, QStringListModel, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QFileDialog,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -44,12 +47,12 @@ class SpiceRow:
 
 POSITIONS_APPROVE = [
     "Генеральный директор",
-    "Директор по производству",
+    "Нач. производства",
     "Главный бухгалтер",
 ]
 POSITIONS_COMPILER = [
     "Кладовщик",
-    "Заведующий складом",
+    "Зав. складом",
 ]
 
 ORGANIZATIONS = {
@@ -122,10 +125,10 @@ SPICES = {
 
 POSITION_TO_PERSONS: dict[str, list[str]] = {
     "Генеральный директор": ["Иванов Иван Иванович"],
-    "Директор по производству": ["Смирнов Алексей Петрович"],
+    "Нач. производства": ["Смирнов Алексей Петрович"],
     "Главный бухгалтер": ["Кузнецова Мария Сергеевна"],
     "Кладовщик": ["Соколов Дмитрий Андреевич", "Николаев Игорь Сергеевич"],
-    "Заведующий складом": ["Васильева Ольга Николаевна", "Федорова Елена Ивановна"],
+    "Зав. складом": ["Васильева Ольга Николаевна", "Федорова Елена Ивановна"],
     "Бухгалтер": ["Петрова Анна Сергеевна", "Егорова Наталья Викторовна"],
 }
 
@@ -872,6 +875,7 @@ class OP13BlankWindow(QMainWindow):
             "QPushButton:hover { background-color: #15803d; }"
             "QPushButton:pressed { background-color: #166534; }"
         )
+        self.btn_export_xls.clicked.connect(self._export_to_excel)
 
         row.addWidget(self.btn_clear_form)
         row.addStretch(1)
@@ -1008,6 +1012,168 @@ class OP13BlankWindow(QMainWindow):
 
     def _on_accountant_name_changed(self, full_name: str) -> None:
         self.ed_accountant_signature.setText(full_name_to_signature(full_name))
+
+    def _table_text(self, row: int, col: int) -> str:
+        item = self.table.item(row, col)
+        return (item.text().strip() if item and item.text() else "")
+
+    def _set_excel_value(self, ws, cell_ref: str, value) -> None:
+        cell = ws[cell_ref]
+        for merged_range in ws.merged_cells.ranges:
+            if cell.coordinate in merged_range:
+                ws[merged_range.start_cell.coordinate] = value
+                return
+        ws[cell_ref] = value
+
+    def _month_name_ru(self, date: QDate) -> str:
+        month_names = [
+            "",
+            "января",
+            "февраля",
+            "марта",
+            "апреля",
+            "мая",
+            "июня",
+            "июля",
+            "августа",
+            "сентября",
+            "октября",
+            "ноября",
+            "декабря",
+        ]
+        return month_names[date.month()]
+
+    def _export_to_excel(self) -> None:
+        template_path = Path(__file__).resolve().parent / "example_OP-13.xlsx"
+        if not template_path.exists():
+            QMessageBox.critical(self, "Экспорт", f"Шаблон не найден:\n{template_path}")
+            return
+
+        doc_no = self.ed_doc_no.text().strip() or "без_номера"
+        default_name = f"ОП-13_{doc_no}.xlsx"
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить экспорт ОП-13",
+            str(template_path.parent / default_name),
+            "Excel (*.xlsx)",
+        )
+        if not output_path:
+            return
+
+        workbook = None
+        try:
+            workbook = openpyxl.load_workbook(template_path)
+            ws = workbook.active
+
+            self._fill_excel_sheet(ws)
+            workbook.save(output_path)
+
+            QMessageBox.information(self, "Экспорт", f"Файл успешно сохранен:\n{output_path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Ошибка экспорта", f"Не удалось экспортировать файл:\n{exc}")
+        finally:
+            if workbook is not None:
+                workbook.close()
+
+    def _fill_excel_sheet(self, ws) -> None:
+        self._set_excel_value(ws, "A6", self.ed_org.text().strip())
+        self._set_excel_value(ws, "A8", self.ed_dept.text().strip())
+        self._set_excel_value(ws, "AQ6", self.ed_okpo.text().strip())
+        self._set_excel_value(ws, "AQ9", self.ed_okdp.text().strip())
+        self._set_excel_value(ws, "AQ10", self.ed_operation.text().strip())
+
+        self._set_excel_value(ws, "Q16", self.ed_doc_no.text().strip())
+        self._set_excel_value(ws, "W16", self.ed_doc_date.date().toString("dd.MM.yyyy"))
+        self._set_excel_value(ws, "AC16", self.ed_period_from.date().toString("dd.MM.yyyy"))
+        self._set_excel_value(ws, "AG16", self.ed_period_to.date().toString("dd.MM.yyyy"))
+
+        head_name = self.cb_head_name.currentText().strip()
+        self._set_excel_value(ws, "AN13", self.cb_head_position.currentText().strip())
+        self._set_excel_value(ws, "AL15", "")
+        self._set_excel_value(ws, "AS15", full_name_to_signature(head_name))
+        act_date = self.ed_act_date.date()
+        self._set_excel_value(ws, "AM17", act_date.day())
+        self._set_excel_value(ws, "AO17", self._month_name_ru(act_date))
+        self._set_excel_value(ws, "AW17", act_date.year())
+
+        data_rows: list[SpiceRow] = []
+        for row in range(self.table.rowCount() - 1):
+            name = self._table_text(row, 1)
+            code = self._table_text(row, 2)
+            opening_balance = self._parse_table_number(self.table.item(row, 3))
+            received = self._parse_table_number(self.table.item(row, 4))
+            closing_balance = self._parse_table_number(self.table.item(row, 5))
+            consumed = self._parse_table_number(self.table.item(row, 6))
+
+            if not name and not code and not any((opening_balance, received, closing_balance, consumed)):
+                continue
+            data_rows.append(
+                SpiceRow(
+                    name=name,
+                    code=code,
+                    opening_balance=opening_balance,
+                    received=received,
+                    closing_balance=closing_balance,
+                    consumed=consumed,
+                )
+            )
+
+        base_row = 24
+        max_template_rows = 8
+        extra_rows = max(0, len(data_rows) - max_template_rows)
+        if extra_rows:
+            ws.insert_rows(base_row + max_template_rows, extra_rows)
+        totals_row = 32 + extra_rows
+
+        for i, row_data in enumerate(data_rows):
+            excel_row = base_row + i
+            self._set_excel_value(ws, f"A{excel_row}", i + 1)
+            self._set_excel_value(ws, f"E{excel_row}", row_data.name)
+            self._set_excel_value(ws, f"S{excel_row}", row_data.code)
+            self._set_excel_value(ws, f"W{excel_row}", row_data.opening_balance)
+            self._set_excel_value(ws, f"AD{excel_row}", row_data.received)
+            self._set_excel_value(ws, f"AK{excel_row}", row_data.closing_balance)
+            self._set_excel_value(ws, f"AS{excel_row}", row_data.consumed)
+
+        for excel_row in range(base_row + len(data_rows), base_row + max_template_rows):
+            self._set_excel_value(ws, f"A{excel_row}", None)
+            self._set_excel_value(ws, f"E{excel_row}", None)
+            self._set_excel_value(ws, f"S{excel_row}", None)
+            self._set_excel_value(ws, f"W{excel_row}", None)
+            self._set_excel_value(ws, f"AD{excel_row}", None)
+            self._set_excel_value(ws, f"AK{excel_row}", None)
+            self._set_excel_value(ws, f"AS{excel_row}", None)
+
+        self._set_excel_value(ws, f"W{totals_row}", self.ed_total_open.value())
+        self._set_excel_value(ws, f"AD{totals_row}", self.ed_total_recv.value())
+        self._set_excel_value(ws, f"AK{totals_row}", self.ed_total_close.value())
+        self._set_excel_value(ws, f"AS{totals_row}", self.ed_total_cons.value())
+
+        def _rub_kop(val: float) -> tuple[int, int]:
+            r = int(val)
+            k = round((val - r) * 100)
+            return (r, k)
+
+        self._set_excel_value(ws, "AE38", self.sb_spice_dishes.value())
+        spice_rub, spice_kop = _rub_kop(self.sp_spice_per_dish.value())
+        self._set_excel_value(ws, "C39", spice_rub)
+        self._set_excel_value(ws, "T39", spice_kop)
+        self._set_excel_value(ws, "AL38", self.sp_spice_sum.value())
+        self._set_excel_value(ws, "AE41", self.sb_salt_dishes.value())
+        salt_rub, salt_kop = _rub_kop(self.sp_salt_per_dish.value())
+        self._set_excel_value(ws, "C42", salt_rub)
+        self._set_excel_value(ws, "T42", salt_kop)
+        self._set_excel_value(ws, "AL41", self.sp_salt_sum.value())
+        self._set_excel_value(ws, "AL44", self.sp_ref_total.value())
+        self._set_excel_value(ws, "AL45", self.sp_control_consumed.value())
+        self._set_excel_value(ws, "AL46", self.sp_underspend.value())
+
+        compiler_name = self.cb_compiler_name.currentText().strip()
+        accountant_name = self.cb_accountant_name.currentText().strip()
+
+        self._set_excel_value(ws, "P48", self.cb_compiler_position.currentText().strip())
+        self._set_excel_value(ws, "AH48", full_name_to_signature(compiler_name))
+        self._set_excel_value(ws, "P50", full_name_to_signature(accountant_name))
 
     def clear_form(self) -> None:
         for ed in (
