@@ -172,19 +172,51 @@ class SpiceCompleterDelegate(QStyledItemDelegate):
         if index.column() not in (1, 2):
             return super().createEditor(parent, option, index)
 
+        persistent_index = QPersistentModelIndex(index)
+        if index.column() == 1:
+            editor = QComboBox(parent)
+            editor.setEditable(True)
+            editor.addItems(list(self._spice_to_code.keys()))
+            editor.setCurrentText(str(index.data(Qt.ItemDataRole.EditRole) or ""))
+
+            line_edit = editor.lineEdit()
+            if line_edit is not None:
+                model = QStringListModel(list(self._spice_to_code.keys()), line_edit)
+                completer = QCompleter(model, line_edit)
+                completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+                line_edit.setCompleter(completer)
+                completer.activated.connect(lambda text, idx=persistent_index: self._apply_pair_value(idx, text))
+                line_edit.returnPressed.connect(
+                    lambda idx=persistent_index, cb=editor: self._apply_pair_value(idx, cb.currentText())
+                )
+
+            editor.textActivated.connect(lambda text, idx=persistent_index: self._apply_pair_value(idx, text))
+            return editor
+
         editor = QLineEdit(parent)
-        values = list(self._spice_to_code.keys()) if index.column() == 1 else list(self._code_to_spice.keys())
-        model = QStringListModel(values, editor)
+        model = QStringListModel(list(self._code_to_spice.keys()), editor)
         completer = QCompleter(model, editor)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         completer.setFilterMode(Qt.MatchFlag.MatchContains)
         completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
         editor.setCompleter(completer)
-
-        persistent_index = QPersistentModelIndex(index)
         completer.activated.connect(lambda text, idx=persistent_index: self._apply_pair_value(idx, text))
         editor.returnPressed.connect(lambda idx=persistent_index, e=editor: self._apply_pair_value(idx, e.text()))
         return editor
+
+    def setModelData(self, editor, model, index) -> None:
+        if isinstance(editor, QComboBox) and index.column() == 1:
+            raw_value = editor.currentText().strip()
+            spice = self._spice_lower.get(raw_value.casefold())
+            if spice:
+                model.setData(index, spice, Qt.ItemDataRole.EditRole)
+                model.setData(model.index(index.row(), 2), self._spice_to_code[spice], Qt.ItemDataRole.EditRole)
+            else:
+                model.setData(index, raw_value, Qt.ItemDataRole.EditRole)
+            return
+        super().setModelData(editor, model, index)
 
     def _apply_pair_value(self, index: QPersistentModelIndex, text: str) -> None:
         if not index.isValid():
@@ -686,7 +718,7 @@ class OP13BlankWindow(QMainWindow):
         grid.addWidget(self.sp_ref_total, 3, 3)
 
         grid.addWidget(
-            mk_label("Израсходовано согласно<br>контрольному расчету:"),
+            mk_label("Израсходовано согласно<br>контрольного расчета:"),
             4,
             0,
             1,
