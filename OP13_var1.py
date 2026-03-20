@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from copy import copy
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import openpyxl
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.pagebreak import Break
 from PySide6.QtCore import Qt, QDate, QLocale, QPersistentModelIndex, QStringListModel, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -97,30 +100,30 @@ SPICES = {
     "Перец черный молотый": "091011",
     "Паприка": "090422",
     "Кориандр молотый": "090921",
-    "Соль поваренная": "1541010",
+    "Соль поваренная": "154101",
     "Лавровый лист": "091099",
     "Зира": "090930",
     "Карри порошок": "091091",
     "Куркума молотая": "091030",
     "Имбирь молотый": "091010",
     "Чеснок сушеный": "071290",
-    "Укроп сушеный": "091099",
-    "Петрушка сушеная": "091099",
-    "Базилик сушеный": "091099",
-    "Розмарин сушеный": "091099",
-    "Тимьян": "091099",
+    "Укроп сушеный": "091100",
+    "Петрушка сушеная": "091101",
+    "Базилик сушеный": "091102",
+    "Розмарин сушеный": "091103",
+    "Тимьян": "091104",
     "Гвоздика": "090700",
     "Корица молотая": "090610",
     "Мускатный орех молотый": "090810",
     "Ваниль": "090500",
     "Перец красный молотый": "090420",
-    "Соль морская": "1541020",
-    "Соль йодированная": "1541030",
+    "Соль морская": "154102",
+    "Соль йодированная": "154103",
     "Горчица порошок": "090920",
     "Анис": "090961",
     "Фенхель": "090962",
     "Перец душистый": "090411",
-    "Хмели-сунели": "091091",
+    "Хмели-сунели": "091092",
 }
 
 POSITION_TO_PERSONS: dict[str, list[str]] = {
@@ -245,6 +248,16 @@ class SpiceCompleterDelegate(QStyledItemDelegate):
 
 class OP13BlankWindow(QMainWindow):
     DATA_ROWS_DEFAULT = 3
+    TABLE_DATA_MERGES: tuple[tuple[str, str], ...] = (
+        ("A", "D"),
+        ("E", "R"),
+        ("S", "V"),
+        ("W", "AC"),
+        ("AD", "AJ"),
+        ("AK", "AR"),
+        ("AS", "AZ"),
+    )
+    TABLE_DATA_STYLE_COLUMNS: tuple[str, ...] = ("A", "E", "S", "W", "AD", "AK", "AS")
 
     def __init__(self):
         super().__init__()
@@ -257,8 +270,6 @@ class OP13BlankWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        #scroll.setStyleSheet("QScrollArea { background-color: white; border: none; }")
-        #scroll.viewport().setStyleSheet("background-color: white;")
         root = QWidget()
         root.setMaximumWidth(820)
         scroll.setWidget(root)
@@ -1034,6 +1045,48 @@ class OP13BlankWindow(QMainWindow):
         ]
         return month_names[date.month()]
 
+    def _copy_table_row_style(self, ws, src_row: int, dst_row: int) -> None:
+        for col in self.TABLE_DATA_STYLE_COLUMNS:
+            src_cell = ws[f"{col}{src_row}"]
+            dst_cell = ws[f"{col}{dst_row}"]
+            dst_cell._style = copy(src_cell._style)
+            if src_cell.number_format:
+                dst_cell.number_format = src_cell.number_format
+        ws.row_dimensions[dst_row].height = ws.row_dimensions[src_row].height
+
+    def _insert_rows_preserving_merges(self, ws, insert_at: int, amount: int) -> None:
+        if amount <= 0:
+            return
+
+        original_ranges = []
+        for merged_range in ws.merged_cells.ranges:
+            original_ranges.append(
+                (
+                    merged_range.min_col,
+                    merged_range.min_row,
+                    merged_range.max_col,
+                    merged_range.max_row,
+                )
+            )
+
+        for min_col, min_row, max_col, max_row in original_ranges:
+            ws.unmerge_cells(
+                f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{max_row}"
+            )
+
+        ws.insert_rows(insert_at, amount)
+
+        for min_col, min_row, max_col, max_row in original_ranges:
+            if min_row >= insert_at:
+                min_row += amount
+                max_row += amount
+            elif max_row >= insert_at:
+                max_row += amount
+
+            ws.merge_cells(
+                f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{max_row}"
+            )
+
     def _export_to_excel(self) -> None:
         template_path = Path(__file__).resolve().parent / "example_OP-13.xlsx"
         if not template_path.exists():
@@ -1066,6 +1119,30 @@ class OP13BlankWindow(QMainWindow):
             if workbook is not None:
                 workbook.close()
 
+    def _configure_export_pagination(
+        self,
+        ws,
+        *,
+        ref_start_row: int,
+        ref_end_row: int,
+        sign_start_row: int,
+        sign_end_row: int,
+        page1_last_row: int = 52,
+    ) -> None:
+        break_before_row: Optional[int] = None
+
+        if ref_end_row > page1_last_row:
+            break_before_row = ref_start_row
+        elif sign_end_row > page1_last_row:
+            break_before_row = sign_start_row
+
+        ws.row_breaks.brk = []
+        if break_before_row is not None and break_before_row > 1:
+            ws.row_breaks.append(Break(id=break_before_row - 1))
+
+        last_row = max(page1_last_row, ref_end_row, sign_end_row)
+        ws.print_area = f"A1:AZ{last_row}"
+
     def _fill_excel_sheet(self, ws) -> None:
         self._set_excel_value(ws, "A6", self.ed_org.text().strip())
         self._set_excel_value(ws, "A8", self.ed_dept.text().strip())
@@ -1080,7 +1157,6 @@ class OP13BlankWindow(QMainWindow):
 
         head_name = self.cb_head_name.currentText().strip()
         self._set_excel_value(ws, "AN13", self.cb_head_position.currentText().strip())
-        self._set_excel_value(ws, "AL15", "")
         self._set_excel_value(ws, "AS15", full_name_to_signature(head_name))
         act_date = self.ed_act_date.date()
         self._set_excel_value(ws, "AM17", act_date.day())
@@ -1113,7 +1189,12 @@ class OP13BlankWindow(QMainWindow):
         max_template_rows = 8
         extra_rows = max(0, len(data_rows) - max_template_rows)
         if extra_rows:
-            ws.insert_rows(base_row + max_template_rows, extra_rows)
+            self._insert_rows_preserving_merges(ws, base_row + max_template_rows, extra_rows)
+            first_new_row = base_row + max_template_rows
+            for row_idx in range(first_new_row, first_new_row + extra_rows):
+                self._copy_table_row_style(ws, base_row + max_template_rows - 1, row_idx)
+                for start_col, end_col in self.TABLE_DATA_MERGES:
+                    ws.merge_cells(f"{start_col}{row_idx}:{end_col}{row_idx}")
         totals_row = 32 + extra_rows
 
         for i, row_data in enumerate(data_rows):
@@ -1145,26 +1226,36 @@ class OP13BlankWindow(QMainWindow):
             k = round((val - r) * 100)
             return (r, k)
 
-        self._set_excel_value(ws, "AE38", self.sb_spice_dishes.value())
+        ref_base_row = 38 + extra_rows
+        self._set_excel_value(ws, f"AE{ref_base_row}", self.sb_spice_dishes.value())
         spice_rub, spice_kop = _rub_kop(self.sp_spice_per_dish.value())
-        self._set_excel_value(ws, "C39", spice_rub)
-        self._set_excel_value(ws, "T39", spice_kop)
-        self._set_excel_value(ws, "AL38", self.sp_spice_sum.value())
-        self._set_excel_value(ws, "AE41", self.sb_salt_dishes.value())
+        self._set_excel_value(ws, f"C{ref_base_row + 1}", spice_rub)
+        self._set_excel_value(ws, f"T{ref_base_row + 1}", spice_kop)
+        self._set_excel_value(ws, f"AL{ref_base_row}", self.sp_spice_sum.value())
+        self._set_excel_value(ws, f"AE{ref_base_row + 3}", self.sb_salt_dishes.value())
         salt_rub, salt_kop = _rub_kop(self.sp_salt_per_dish.value())
-        self._set_excel_value(ws, "C42", salt_rub)
-        self._set_excel_value(ws, "T42", salt_kop)
-        self._set_excel_value(ws, "AL41", self.sp_salt_sum.value())
-        self._set_excel_value(ws, "AL44", self.sp_ref_total.value())
-        self._set_excel_value(ws, "AL45", self.sp_control_consumed.value())
-        self._set_excel_value(ws, "AL46", self.sp_underspend.value())
+        self._set_excel_value(ws, f"C{ref_base_row + 4}", salt_rub)
+        self._set_excel_value(ws, f"T{ref_base_row + 4}", salt_kop)
+        self._set_excel_value(ws, f"AL{ref_base_row + 3}", self.sp_salt_sum.value())
+        self._set_excel_value(ws, f"AL{ref_base_row + 6}", self.sp_ref_total.value())
+        self._set_excel_value(ws, f"AL{ref_base_row + 7}", self.sp_control_consumed.value())
+        self._set_excel_value(ws, f"AL{ref_base_row + 8}", self.sp_underspend.value())
 
         compiler_name = self.cb_compiler_name.currentText().strip()
         accountant_name = self.cb_accountant_name.currentText().strip()
 
-        self._set_excel_value(ws, "P48", self.cb_compiler_position.currentText().strip())
-        self._set_excel_value(ws, "AH48", full_name_to_signature(compiler_name))
-        self._set_excel_value(ws, "P50", full_name_to_signature(accountant_name))
+        sign_base_row = 48 + extra_rows
+        self._set_excel_value(ws, f"P{sign_base_row}", self.cb_compiler_position.currentText().strip())
+        self._set_excel_value(ws, f"AH{sign_base_row}", full_name_to_signature(compiler_name))
+        self._set_excel_value(ws, f"P{sign_base_row + 2}", full_name_to_signature(accountant_name))
+
+        self._configure_export_pagination(
+            ws,
+            ref_start_row=34 + extra_rows,
+            ref_end_row=47 + extra_rows,
+            sign_start_row=48 + extra_rows,
+            sign_end_row=52 + extra_rows,
+        )
 
     def clear_form(self) -> None:
         for ed in (
