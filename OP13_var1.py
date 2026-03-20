@@ -428,6 +428,7 @@ class OP13BlankWindow(QMainWindow):
         self.ed_operation.setPlaceholderText("Вид")
 
         approve_box = QGroupBox("УТВЕРЖДАЮ")
+        approve_box.setMaximumWidth(350)
         approve_grid = QGridLayout(approve_box)
         approve_grid.setHorizontalSpacing(10)
         approve_grid.setVerticalSpacing(6)
@@ -458,10 +459,10 @@ class OP13BlankWindow(QMainWindow):
         approve_grid.setColumnStretch(1, 1)
 
         top_row = QHBoxLayout()
-        top_row.setSpacing(12)
+        top_row.setSpacing(8)
 
         left_grid = QGridLayout()
-        left_grid.setHorizontalSpacing(6)
+        left_grid.setHorizontalSpacing(4)
         left_grid.setVerticalSpacing(6)
         left_grid.addWidget(QLabel("Организация:"), 0, 0)
         left_grid.addWidget(self.ed_org, 0, 1, 1, 5)
@@ -473,6 +474,7 @@ class OP13BlankWindow(QMainWindow):
         left_grid.addWidget(self.ed_okpo, 2, 3)
         left_grid.addWidget(QLabel("Вид операции:"), 2, 4)
         left_grid.addWidget(self.ed_operation, 2, 5)
+        left_grid.setColumnMinimumWidth(0, 100)
         left_grid.setColumnStretch(1, 1)
         left_grid.setColumnStretch(3, 0)
         left_grid.setColumnStretch(5, 1)
