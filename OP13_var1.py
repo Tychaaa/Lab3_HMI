@@ -537,7 +537,14 @@ class OP13BlankWindow(QMainWindow):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(10)
 
-        row.addStretch(1)
+        self.btn_clear_form = QPushButton("Очистить форму")
+        self.btn_clear_form.setObjectName("btn_clear_form")
+        self.btn_clear_form.setStyleSheet(
+            "QPushButton { background-color: #dc2626; color: white; border-radius: 4px; padding: 6px 16px; }"
+            "QPushButton:hover { background-color: #b91c1c; }"
+            "QPushButton:pressed { background-color: #991b1b; }"
+        )
+        self.btn_clear_form.clicked.connect(self.clear_form)
 
         self.btn_print = QPushButton("Печать")
         self.btn_print.setObjectName("btn_print")
@@ -547,7 +554,7 @@ class OP13BlankWindow(QMainWindow):
             "QPushButton:pressed { background-color: #1e40af; }"
         )
 
-        self.btn_export_xls = QPushButton("Выгрузка в XLS")
+        self.btn_export_xls = QPushButton("Экспорт в XLS")
         self.btn_export_xls.setObjectName("btn_export_xls")
         self.btn_export_xls.setStyleSheet(
             "QPushButton { background-color: #16a34a; color: white; border-radius: 4px; padding: 6px 16px; }"
@@ -555,6 +562,8 @@ class OP13BlankWindow(QMainWindow):
             "QPushButton:pressed { background-color: #166534; }"
         )
 
+        row.addWidget(self.btn_clear_form)
+        row.addStretch(1)
         row.addWidget(self.btn_print)
         row.addWidget(self.btn_export_xls)
 
