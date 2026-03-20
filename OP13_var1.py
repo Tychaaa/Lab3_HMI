@@ -586,6 +586,51 @@ class OP13BlankWindow(QMainWindow):
 
         self.table.setRowHeight(totals_row, 32)
 
+    def _parse_table_number(self, item: Optional[QTableWidgetItem]) -> float:
+        if item is None:
+            return 0.0
+        text = (item.text() or "").strip().replace(" ", "").replace(",", ".")
+        if not text:
+            return 0.0
+        try:
+            return float(text)
+        except ValueError:
+            return 0.0
+
+    def _recalc_table_totals(self) -> None:
+        data_rows = max(0, self.table.rowCount() - 1)
+        total_open = 0.0
+        total_recv = 0.0
+        total_close = 0.0
+        total_cons = 0.0
+
+        for row in range(data_rows):
+            total_open += self._parse_table_number(self.table.item(row, 3))
+            total_recv += self._parse_table_number(self.table.item(row, 4))
+            total_close += self._parse_table_number(self.table.item(row, 5))
+            total_cons += self._parse_table_number(self.table.item(row, 6))
+
+        for widget, value in (
+            (self.ed_total_open, total_open),
+            (self.ed_total_recv, total_recv),
+            (self.ed_total_close, total_close),
+            (self.ed_total_cons, total_cons),
+        ):
+            widget.blockSignals(True)
+            widget.setValue(value)
+            widget.blockSignals(False)
+
+    def _on_table_item_changed(self, item: QTableWidgetItem) -> None:
+        if item.row() == self.table.rowCount() - 1:
+            return
+        if 3 <= item.column() <= 6:
+            wanted_align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            if int(item.textAlignment()) != int(wanted_align):
+                self.table.blockSignals(True)
+                item.setTextAlignment(wanted_align)
+                self.table.blockSignals(False)
+            self._recalc_table_totals()
+
     def _build_table_block(self) -> QWidget:
         box = QGroupBox("Расход специй и соли")
         layout = QVBoxLayout(box)
@@ -614,6 +659,7 @@ class OP13BlankWindow(QMainWindow):
         self._spice_delegate = SpiceCompleterDelegate(SPICES, self.table)
         self.table.setItemDelegateForColumn(1, self._spice_delegate)
         self.table.setItemDelegateForColumn(2, self._spice_delegate)
+        self.table.itemChanged.connect(self._on_table_item_changed)
 
         hdr = self.table.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
@@ -856,11 +902,19 @@ class OP13BlankWindow(QMainWindow):
                 if cell_item is None:
                     self.table.setItem(r, c, QTableWidgetItem(""))
 
+            for c in range(3, 7):
+                money_item = self.table.item(r, c)
+                if money_item is None:
+                    money_item = QTableWidgetItem("")
+                    self.table.setItem(r, c, money_item)
+                money_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
     def _add_table_row(self) -> None:
         insert_at = self.table.rowCount() - 1
         self.table.insertRow(insert_at)
         self._renumber_table()
         self._setup_totals_row(preserve_values=True)
+        self._recalc_table_totals()
         self._adjust_table_height_to_rows()
 
     def _delete_selected_rows(self) -> None:
@@ -877,6 +931,7 @@ class OP13BlankWindow(QMainWindow):
 
         self._renumber_table()
         self._setup_totals_row(preserve_values=True)
+        self._recalc_table_totals()
         self._adjust_table_height_to_rows()
 
     def _recalc_reference(self) -> None:
