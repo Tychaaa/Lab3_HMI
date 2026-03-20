@@ -4,10 +4,11 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
-from PySide6.QtCore import Qt, QDate, QLocale, Signal
+from PySide6.QtCore import Qt, QDate, QLocale, QPersistentModelIndex, QStringListModel, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QApplication,
+    QCompleter,
     QComboBox,
     QDateEdit,
     QDoubleSpinBox,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -45,25 +47,97 @@ POSITIONS_APPROVE = [
     "Директор по производству",
     "Главный бухгалтер",
 ]
-NAMES_APPROVE = [
-    "Иванов Иван Иванович",
-    "Смирнов Алексей Петрович",
-    "Кузнецова Мария Сергеевна",
-]
-
 POSITIONS_COMPILER = [
     "Кладовщик",
     "Заведующий складом",
 ]
-NAMES_COMPILER = [
-    "Соколов Дмитрий Андреевич",
-    "Васильева Ольга Николаевна",
-]
 
-NAMES_ACCOUNTANT = [
-    "Петрова Анна Сергеевна",
-    "Егорова Наталья Викторовна",
-]
+ORGANIZATIONS = {
+    "ООО Ресторан 'Пряный Вкус'": "10293847",
+    "АО Столовая 'Восток'": "56473829",
+    "ООО Кафе 'Специи и Соль'": "12345678",
+    "АО Фабрика-кухня 'Гурман'": "87654321",
+    "ЗАО Мясокомбинат 'СпецПром'": "11223344",
+    "ПАО Общепит 'Соляной Рай'": "55667788",
+    "ООО Пекарня 'Аромат'": "99887766",
+    "АО Кондитерская Фабрика 'Ваниль'": "44556677",
+    "ООО Кейтеринг 'Пряности'": "22334455",
+    "ПАО Столовая Завода 'СольТрейд'": "66778899",
+    "АО Ресторанный Двор 'Перец'": "33445566",
+    "ООО Кулинарный Цех 'СпецииПро'": "77889900",
+    "ЗАО Рыбокомбинат 'Морская Соль'": "99001122",
+    "ПАО Кафе 'Чесночный Аромат'": "11220099",
+    "ООО Общественное Питание 'Соль и Перец'": "55443322",
+}
+
+DEPARTMENTS = {
+    "Склад специй и приправ": "51.17.10",
+    "Склад соли и консервантов": "51.17.20",
+    "Горячий цех": "15.11.10",
+    "Холодный цех": "15.11.20",
+    "Кондитерский цех": "15.82.10",
+    "Мясной цех": "15.11.30",
+    "Рыбный цех": "15.20.10",
+    "Цех полуфабрикатов": "15.13.10",
+    "Производственный цех (общий)": "15.11.00",
+    "Склад сырья и ингредиентов": "51.17.00",
+    "Отдел контроля качества и расхода": "74.30.10",
+    "Кухня ресторана": "55.30.10",
+    "Кухня столовой": "55.51.10",
+    "Кейтеринг-цех": "55.52.10",
+    "Пекарный цех": "15.81.10",
+    "Отдел снабжения специями": "51.38.10",
+    "Склад готовой продукции": "52.10.10",
+}
+
+SPICES = {
+    "Перец черный молотый": "091011",
+    "Паприка": "090422",
+    "Кориандр молотый": "090921",
+    "Соль поваренная": "1541010",
+    "Лавровый лист": "091099",
+    "Зира": "090930",
+    "Карри порошок": "091091",
+    "Куркума молотая": "091030",
+    "Имбирь молотый": "091010",
+    "Чеснок сушеный": "071290",
+    "Укроп сушеный": "091099",
+    "Петрушка сушеная": "091099",
+    "Базилик сушеный": "091099",
+    "Розмарин сушеный": "091099",
+    "Тимьян": "091099",
+    "Гвоздика": "090700",
+    "Корица молотая": "090610",
+    "Мускатный орех молотый": "090810",
+    "Ваниль": "090500",
+    "Перец красный молотый": "090420",
+    "Соль морская": "1541020",
+    "Соль йодированная": "1541030",
+    "Горчица порошок": "090920",
+    "Анис": "090961",
+    "Фенхель": "090962",
+    "Перец душистый": "090411",
+    "Хмели-сунели": "091091",
+}
+
+POSITION_TO_PERSONS: dict[str, list[str]] = {
+    "Генеральный директор": ["Иванов Иван Иванович"],
+    "Директор по производству": ["Смирнов Алексей Петрович"],
+    "Главный бухгалтер": ["Кузнецова Мария Сергеевна"],
+    "Кладовщик": ["Соколов Дмитрий Андреевич", "Николаев Игорь Сергеевич"],
+    "Заведующий складом": ["Васильева Ольга Николаевна", "Федорова Елена Ивановна"],
+    "Бухгалтер": ["Петрова Анна Сергеевна", "Егорова Наталья Викторовна"],
+}
+
+PERSON_TO_POSITION = {
+    person: position
+    for position, people in POSITION_TO_PERSONS.items()
+    for person in people
+}
+
+NAMES_APPROVE = [POSITION_TO_PERSONS[pos][0] for pos in POSITIONS_APPROVE if POSITION_TO_PERSONS.get(pos)]
+NAMES_COMPILER = [person for pos in POSITIONS_COMPILER for person in POSITION_TO_PERSONS.get(pos, [])]
+NAMES_ACCOUNTANT = POSITION_TO_PERSONS["Бухгалтер"]
 
 
 def full_name_to_signature(full_name: str) -> str:
@@ -84,6 +158,54 @@ class MoneySpin(QDoubleSpinBox):
         self.setSingleStep(1.00)
         self.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.valueChanged.connect(lambda *_: self.valueChangedSafe.emit())
+
+
+class SpiceCompleterDelegate(QStyledItemDelegate):
+    def __init__(self, spice_map: dict[str, str], parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._spice_to_code = spice_map
+        self._code_to_spice = {code: spice for spice, code in spice_map.items()}
+        self._spice_lower = {spice.casefold(): spice for spice in spice_map}
+        self._code_lower = {code.casefold(): code for code in self._code_to_spice}
+
+    def createEditor(self, parent: QWidget, option, index):
+        if index.column() not in (1, 2):
+            return super().createEditor(parent, option, index)
+
+        editor = QLineEdit(parent)
+        values = list(self._spice_to_code.keys()) if index.column() == 1 else list(self._code_to_spice.keys())
+        model = QStringListModel(values, editor)
+        completer = QCompleter(model, editor)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        editor.setCompleter(completer)
+
+        persistent_index = QPersistentModelIndex(index)
+        completer.activated.connect(lambda text, idx=persistent_index: self._apply_pair_value(idx, text))
+        editor.returnPressed.connect(lambda idx=persistent_index, e=editor: self._apply_pair_value(idx, e.text()))
+        return editor
+
+    def _apply_pair_value(self, index: QPersistentModelIndex, text: str) -> None:
+        if not index.isValid():
+            return
+        model = index.model()
+
+        if index.column() == 1:
+            spice = self._spice_lower.get(text.casefold())
+            if not spice:
+                return
+            code = self._spice_to_code[spice]
+            model.setData(index, spice, Qt.ItemDataRole.EditRole)
+            model.setData(model.index(index.row(), 2), code, Qt.ItemDataRole.EditRole)
+            return
+
+        code = self._code_lower.get(text.casefold())
+        if not code:
+            return
+        spice = self._code_to_spice[code]
+        model.setData(index, code, Qt.ItemDataRole.EditRole)
+        model.setData(model.index(index.row(), 1), spice, Qt.ItemDataRole.EditRole)
 
 
 class OP13BlankWindow(QMainWindow):
@@ -121,6 +243,10 @@ class OP13BlankWindow(QMainWindow):
         self._root_layout.addStretch(1)
 
         self._apply_ru_locale()
+        self._setup_requisites_completers()
+        self._set_default_reporting_period()
+        self._syncing_person_fields = False
+        self._initialize_people_selectors()
         self._recalc_reference()
 
     def showEvent(self, event):
@@ -135,6 +261,103 @@ class OP13BlankWindow(QMainWindow):
         ed.setDisplayFormat(display_format)
         ed.setDate(QDate.currentDate())
         return ed
+
+    def _set_default_reporting_period(self) -> None:
+        first_day_prev_month = QDate.currentDate().addMonths(-1)
+        first_day_prev_month = QDate(first_day_prev_month.year(), first_day_prev_month.month(), 1)
+        last_day_prev_month = first_day_prev_month.addMonths(1).addDays(-1)
+        self.ed_period_from.setDate(first_day_prev_month)
+        self.ed_period_to.setDate(last_day_prev_month)
+
+    def _make_completer(self, values: list[str], parent: QWidget) -> QCompleter:
+        model = QStringListModel(values, parent)
+        completer = QCompleter(model, parent)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        return completer
+
+    def _find_match(self, text: str, values: list[str]) -> str:
+        normalized = text.strip().casefold()
+        for value in values:
+            if value.casefold() == normalized:
+                return value
+        return ""
+
+    def _setup_bidirectional_completion(
+        self,
+        left_edit: QLineEdit,
+        right_edit: QLineEdit,
+        left_to_right: dict[str, str],
+    ) -> None:
+        right_to_left = {v: k for k, v in left_to_right.items()}
+        left_values = list(left_to_right.keys())
+        right_values = list(right_to_left.keys())
+
+        left_completer = self._make_completer(left_values, left_edit)
+        right_completer = self._make_completer(right_values, right_edit)
+        left_edit.setCompleter(left_completer)
+        right_edit.setCompleter(right_completer)
+
+        def apply_left(text: str) -> None:
+            left_match = self._find_match(text, left_values)
+            if not left_match:
+                return
+            right_value = left_to_right[left_match]
+            left_edit.blockSignals(True)
+            right_edit.blockSignals(True)
+            left_edit.setText(left_match)
+            right_edit.setText(right_value)
+            right_edit.blockSignals(False)
+            left_edit.blockSignals(False)
+
+        def apply_right(text: str) -> None:
+            right_match = self._find_match(text, right_values)
+            if not right_match:
+                return
+            left_value = right_to_left[right_match]
+            right_edit.blockSignals(True)
+            left_edit.blockSignals(True)
+            right_edit.setText(right_match)
+            left_edit.setText(left_value)
+            left_edit.blockSignals(False)
+            right_edit.blockSignals(False)
+
+        left_completer.activated.connect(apply_left)
+        right_completer.activated.connect(apply_right)
+        left_edit.returnPressed.connect(lambda: apply_left(left_edit.text()))
+        right_edit.returnPressed.connect(lambda: apply_right(right_edit.text()))
+
+    def _setup_requisites_completers(self) -> None:
+        self._setup_bidirectional_completion(self.ed_org, self.ed_okpo, ORGANIZATIONS)
+        self._setup_bidirectional_completion(self.ed_dept, self.ed_okdp, DEPARTMENTS)
+
+    def _replace_combo_items(self, combo: QComboBox, items: list[str], selected_text: str = "") -> None:
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("")
+        combo.addItems(items)
+
+        if selected_text and selected_text in items:
+            combo.setCurrentText(selected_text)
+        elif items:
+            combo.setCurrentIndex(1)
+        else:
+            combo.setCurrentIndex(0)
+        combo.blockSignals(False)
+
+    def _initialize_people_selectors(self) -> None:
+        self._replace_combo_items(self.cb_head_name, NAMES_APPROVE)
+        self._replace_combo_items(self.cb_compiler_name, NAMES_COMPILER)
+        self._replace_combo_items(self.cb_accountant_name, NAMES_ACCOUNTANT)
+        self.cb_head_name.setCurrentIndex(0)
+        self.cb_compiler_name.setCurrentIndex(0)
+        # Бухгалтер всегда выбран — проставляем первого человека из списка
+        if NAMES_ACCOUNTANT:
+            self.cb_accountant_name.setCurrentText(NAMES_ACCOUNTANT[0])
+            self.ed_accountant_signature.setText(
+                full_name_to_signature(NAMES_ACCOUNTANT[0])
+            )
 
     def _build_title_block(self) -> QWidget:
         box = QGroupBox("Унифицированная форма № ОП-13 - Акт расхода специй и соли")
@@ -193,11 +416,12 @@ class OP13BlankWindow(QMainWindow):
         self.ed_okpo.setObjectName("okpo")
         self.ed_okpo.setValidator(QIntValidator(0, 999999999))
         self.ed_okpo.setPlaceholderText("ОКПО")
-        self.ed_okpo.setMaximumWidth(140)
+        self.ed_okpo.setFixedWidth(80)
 
         self.ed_okdp = QLineEdit()
         self.ed_okdp.setObjectName("okdp")
         self.ed_okdp.setPlaceholderText("ОКДП")
+        self.ed_okdp.setFixedWidth(80)
 
         self.ed_operation = QLineEdit()
         self.ed_operation.setObjectName("operation_kind")
@@ -219,6 +443,8 @@ class OP13BlankWindow(QMainWindow):
         self.cb_head_name.setEditable(True)
         self.cb_head_name.addItem("")
         self.cb_head_name.addItems(NAMES_APPROVE)
+        self.cb_head_position.currentTextChanged.connect(self._on_head_position_changed)
+        self.cb_head_name.currentTextChanged.connect(self._on_head_name_changed)
 
         self.ed_act_date = self._make_date_edit("«dd» MMMM yyyy 'г.'")
         self.ed_act_date.setObjectName("approval_date")
@@ -351,15 +577,19 @@ class OP13BlankWindow(QMainWindow):
 
         self._renumber_table()
         self._setup_totals_row(preserve_values=False)
+        self._spice_delegate = SpiceCompleterDelegate(SPICES, self.table)
+        self.table.setItemDelegateForColumn(1, self._spice_delegate)
+        self.table.setItemDelegateForColumn(2, self._spice_delegate)
 
         hdr = self.table.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(0, 50)
-
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(0, 40)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 160)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 65)
         for c in range(3, 7):
             hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.Stretch)
 
@@ -497,6 +727,7 @@ class OP13BlankWindow(QMainWindow):
         self.cb_compiler_name.setEditable(True)
         self.cb_compiler_name.addItem("")
         self.cb_compiler_name.addItems(NAMES_COMPILER)
+        self.cb_compiler_position.currentTextChanged.connect(self._on_compiler_position_changed)
         self.cb_compiler_name.currentTextChanged.connect(self._on_compiler_name_changed)
 
         self.ed_accountant_signature = QLineEdit()
@@ -586,6 +817,11 @@ class OP13BlankWindow(QMainWindow):
             item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
+            for c in (1, 2):
+                cell_item = self.table.item(r, c)
+                if cell_item is None:
+                    self.table.setItem(r, c, QTableWidgetItem(""))
+
     def _add_table_row(self) -> None:
         insert_at = self.table.rowCount() - 1
         self.table.insertRow(insert_at)
@@ -632,7 +868,54 @@ class OP13BlankWindow(QMainWindow):
         self.sp_underspend.blockSignals(False)
 
     def _on_compiler_name_changed(self, full_name: str) -> None:
+        if self._syncing_person_fields:
+            return
+        self._syncing_person_fields = True
+        try:
+            position = PERSON_TO_POSITION.get(full_name, "")
+            if position in POSITIONS_COMPILER:
+                self.cb_compiler_position.setCurrentText(position)
+                names = POSITION_TO_PERSONS.get(position, [])
+                self._replace_combo_items(self.cb_compiler_name, names, selected_text=full_name)
+        finally:
+            self._syncing_person_fields = False
         self.ed_compiler_signature.setText(full_name_to_signature(full_name))
+
+    def _on_compiler_position_changed(self, position: str) -> None:
+        if self._syncing_person_fields:
+            return
+        self._syncing_person_fields = True
+        try:
+            names = POSITION_TO_PERSONS.get(position, []) if position else NAMES_COMPILER
+            selected = names[0] if position and names else ""
+            self._replace_combo_items(self.cb_compiler_name, names, selected_text=selected)
+            self.ed_compiler_signature.setText(full_name_to_signature(self.cb_compiler_name.currentText()))
+        finally:
+            self._syncing_person_fields = False
+
+    def _on_head_position_changed(self, position: str) -> None:
+        if self._syncing_person_fields:
+            return
+        self._syncing_person_fields = True
+        try:
+            names = POSITION_TO_PERSONS.get(position, []) if position else NAMES_APPROVE
+            selected = names[0] if position and names else ""
+            self._replace_combo_items(self.cb_head_name, names, selected_text=selected)
+        finally:
+            self._syncing_person_fields = False
+
+    def _on_head_name_changed(self, full_name: str) -> None:
+        if self._syncing_person_fields:
+            return
+        self._syncing_person_fields = True
+        try:
+            position = PERSON_TO_POSITION.get(full_name, "")
+            if position in POSITIONS_APPROVE:
+                self.cb_head_position.setCurrentText(position)
+                names = POSITION_TO_PERSONS.get(position, [])
+                self._replace_combo_items(self.cb_head_name, names, selected_text=full_name)
+        finally:
+            self._syncing_person_fields = False
 
     def _on_accountant_name_changed(self, full_name: str) -> None:
         self.ed_accountant_signature.setText(full_name_to_signature(full_name))
@@ -662,9 +945,10 @@ class OP13BlankWindow(QMainWindow):
 
         today = QDate.currentDate()
         self.ed_doc_date.setDate(today)
-        self.ed_period_from.setDate(today)
-        self.ed_period_to.setDate(today)
+        self._set_default_reporting_period()
         self.ed_act_date.setDate(today)
+        self.ed_accountant_position.setText("Бухгалтер")
+        self._initialize_people_selectors()
 
         current_data_rows = max(0, self.table.rowCount() - 1)
         self.table.clearSpans()
